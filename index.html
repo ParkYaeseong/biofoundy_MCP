@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>국가 바이오파운드리 AI 오케스트레이션 시스템 프로토타입</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Mol* Viewer Assets -->
+    <link rel="stylesheet" type="text/css" href="https://molstar.org/viewer/molstar.css" />
+    <script type="text/javascript" src="https://molstar.org/viewer/molstar.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f0f4f8;
+        }
+        .step-pending { background-color: #e0e0e0; }
+        .step-running { background-color: #60a5fa; color: white; }
+        .step-completed { background-color: #34d399; color: white; }
+        .blinking { animation: blink 1s linear infinite; }
+        @keyframes blink {
+            50% { opacity: 0.5; }
+        }
+        #molstar-container .msp-viewport { position: relative !important; }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="container mx-auto p-4 lg:p-8">
+        <!-- 헤더 -->
+        <header class="mb-8 p-6 bg-white rounded-xl shadow-md flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">국가 바이오파운드리 AI 오케스트레이션 시스템</h1>
+                <p class="text-gray-600 mt-1">프로토타입: De Novo 바인더 설계 워크플로우 시뮬레이션</p>
+            </div>
+            <div class="flex items-center space-x-2 text-blue-600">
+                <i data-lucide="dna"></i>
+                <span class="font-semibold text-lg">K-Biofoundry</span>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- 왼쪽 컬럼: 워크플로우 실행기 -->
+            <div class="lg:col-span-2 space-y-8">
+                <div id="workflow-launcher" class="bg-white p-6 rounded-xl shadow-md">
+                    <h2 class="text-2xl font-bold mb-4 flex items-center"><i data-lucide="play-circle" class="mr-3 text-blue-500"></i>워크플로우 실행기 (Snakemake)</h2>
+                    <p class="mb-4 text-gray-600">보고서의 'DeNovoBinderDesign' Snakemake 워크플로우를 시작합니다. 표적 단백질 PDB ID를 입력하고 워크플로우를 실행하세요.</p>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="pdb-id" class="block text-sm font-medium text-gray-700 mb-1">표적 단백질 PDB ID</label>
+                            <input type="text" id="pdb-id" value="7K4N" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <button id="start-workflow-btn" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2 opacity-50 cursor-not-allowed" disabled>
+                            <i data-lucide="send"></i>
+                            <span id="start-btn-text">뷰어 초기화 중...</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 워크플로우 진행상황 -->
+                <div id="workflow-progress" class="bg-white p-6 rounded-xl shadow-md hidden">
+                    <h2 class="text-2xl font-bold mb-6 flex items-center"><i data-lucide="loader-2" class="mr-3 text-blue-500 animate-spin"></i>워크플로우 진행상황</h2>
+                    <div class="space-y-5">
+                        <!-- Step 1: Design Backbone -->
+                        <div class="flex items-center">
+                            <div id="step1-status" class="step-pending w-10 h-10 rounded-full flex items-center justify-center mr-4 transition-colors">
+                                <i data-lucide="git-commit"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold">1. 뼈대 구조 설계 (Design Backbone)</h3>
+                                <p class="text-sm text-gray-500">AI 모델: <span class="font-semibold text-purple-600">RFDiffusion</span></p>
+                                <p id="step1-output" class="text-sm text-gray-600 italic mt-1"></p>
+                            </div>
+                        </div>
+                         <!-- Step 2: Design Sequences -->
+                        <div class="flex items-center">
+                            <div id="step2-status" class="step-pending w-10 h-10 rounded-full flex items-center justify-center mr-4 transition-colors">
+                               <i data-lucide="align-justify"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold">2. 서열 설계 (Design Sequences)</h3>
+                                <p class="text-sm text-gray-500">AI 모델: <span class="font-semibold text-purple-600">ProteinMPNN</span></p>
+                                <p id="step2-output" class="text-sm text-gray-600 italic mt-1"></p>
+                            </div>
+                        </div>
+                        <!-- Step 3: Predict Structures -->
+                        <div class="flex items-center">
+                            <div id="step3-status" class="step-pending w-10 h-10 rounded-full flex items-center justify-center mr-4 transition-colors">
+                                <i data-lucide="brain-circuit"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold">3. 구조 예측 (Predict Structures)</h3>
+                                <p class="text-sm text-gray-500">AI 모델: <span class="font-semibold text-purple-600">AlphaFold2</span></p>
+                                <p id="step3-output" class="text-sm text-gray-600 italic mt-1"></p>
+                            </div>
+                        </div>
+                         <!-- Step 4: Analyze Results -->
+                         <div class="flex items-center">
+                            <div id="step4-status" class="step-pending w-10 h-10 rounded-full flex items-center justify-center mr-4 transition-colors">
+                                <i data-lucide="bar-chart-2"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold">4. 결과 분석 (Analyze Results)</h3>
+                                <p class="text-sm text-gray-500">상위 후보군 필터링 및 점수 계산</p>
+                                <p id="step4-output" class="text-sm text-gray-600 italic mt-1"></p>
+                            </div>
+                        </div>
+                        <!-- Step 5: De Novo Genomic Generation -->
+                        <div class="flex items-center">
+                            <div id="step5-status" class="step-pending w-10 h-10 rounded-full flex items-center justify-center mr-4 transition-colors">
+                                <i data-lucide="dna"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold">5. 신규 유전체 생성 (De Novo Genomic Generation)</h3>
+                                <p class="text-sm text-gray-500">AI 모델: <span class="font-semibold text-purple-600">Evo2</span></p>
+                                <p id="step5-output" class="text-sm text-gray-600 italic mt-1"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                 <!-- 결과 분석 -->
+                <div id="results-analysis" class="bg-white p-6 rounded-xl shadow-md hidden">
+                    <h2 class="text-2xl font-bold mb-4 flex items-center"><i data-lucide="award" class="mr-3 text-green-500"></i>워크플로우 완료: 결과 분석</h2>
+                    <p class="mb-6 text-gray-600">DeNovoBinderDesign 워크플로우가 성공적으로 완료되었습니다. 상위 5개 후보 바인더 목록입니다.</p>
+                    <div class="border rounded-lg overflow-hidden">
+                        <table class="w-full text-sm text-left text-gray-500">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">순위</th>
+                                    <th scope="col" class="px-6 py-3">바인더 ID</th>
+                                    <th scope="col" class="px-6 py-3">pLDDT 점수</th>
+                                    <th scope="col" class="px-6 py-3">결합 에너지 (REU)</th>
+                                    <th scope="col" class="px-6 py-3">구조 확인</th>
+                                </tr>
+                            </thead>
+                            <tbody id="results-table-body">
+                                <!-- 결과 행이 동적으로 추가됩니다 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 오른쪽 컬럼: MCP Co-pilot & 3D 뷰어 -->
+            <div class="space-y-8">
+                 <div class="bg-white p-6 rounded-xl shadow-md">
+                    <h2 class="text-2xl font-bold mb-4 flex items-center"><i data-lucide="bot" class="mr-3 text-blue-500"></i>AI Co-pilot (MCP)</h2>
+                    <p class="mb-4 text-sm text-gray-500">MCP(모델 컨텍스트 프로토콜)를 통해 시스템과 대화형으로 상호작용합니다. 자연어 명령을 시도해보세요.</p>
+                    <div id="mcp-chat-window" class="h-64 bg-gray-100 rounded-lg p-3 overflow-y-auto mb-4 text-sm space-y-3">
+                        <div class="p-2 rounded-lg bg-blue-100 text-blue-800 self-start">
+                            <strong>Co-pilot:</strong> 안녕하세요! 무엇을 도와드릴까요? '상위 5개 결과 보여줘' 또는 '바인더 BD-01 정보 요약해줘'와 같이 질문해보세요.
+                        </div>
+                    </div>
+                    <div class="flex space-x-2">
+                        <input type="text" id="mcp-input" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="명령어 입력...">
+                        <button id="mcp-send-btn" class="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition-colors"><i data-lucide="arrow-right"></i></button>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-xl shadow-md">
+                    <h2 class="text-2xl font-bold mb-4 flex items-center"><i data-lucide="cuboid" class="mr-3 text-blue-500"></i>3D 분자 뷰어 (Mol*)</h2>
+                    <div id="molstar-parent" class="w-full h-80 bg-gray-900 rounded-lg flex items-center justify-center text-white relative overflow-hidden">
+                        <div id="molstar-placeholder" class="text-center z-10 p-4">
+                            <i data-lucide="mouse-pointer-click" class="w-16 h-16 mx-auto mb-4 text-gray-500"></i>
+                            <p class="text-gray-400">결과 목록에서 '구조 보기'를 클릭하세요.</p>
+                            <p id="molstar-error" class="text-red-400 mt-2 hidden"></p>
+                        </div>
+                        <div id="molstar-loading" class="text-center hidden z-10">
+                            <i data-lucide="loader-2" class="w-16 h-16 mx-auto mb-4 text-gray-500 animate-spin"></i>
+                            <p class="text-gray-400">구조 데이터를 불러오는 중...</p>
+                        </div>
+                         <div id="molstar-container" class="absolute top-0 left-0 w-full h-full"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        const startBtn = document.getElementById('start-workflow-btn');
+        const startBtnText = document.getElementById('start-btn-text');
+        const pdbIdInput = document.getElementById('pdb-id');
+        const workflowProgress = document.getElementById('workflow-progress');
+        const resultsAnalysis = document.getElementById('results-analysis');
+        
+        const mcpInput = document.getElementById('mcp-input');
+        const mcpSendBtn = document.getElementById('mcp-send-btn');
+        const mcpChatWindow = document.getElementById('mcp-chat-window');
+
+        const molstarParent = document.getElementById('molstar-parent');
+        const molstarContainer = document.getElementById('molstar-container');
+        const molstarPlaceholder = document.getElementById('molstar-placeholder');
+        const molstarLoading = document.getElementById('molstar-loading');
+        
+        let workflowRunning = false;
+        let workflowCompleted = false;
+        const mockResults = [];
+        let molstarViewer = null;
+
+        async function initMolstar() {
+            try {
+                molstarViewer = await molstar.Viewer.create(molstarContainer, {
+                    layoutIsExpanded: false,
+                    layoutShowControls: false,
+                    viewportBackground: '#1f2937' // bg-gray-800
+                });
+                startBtn.disabled = false;
+                startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                startBtnText.textContent = '설계 워크플로우 시작';
+            } catch (e) {
+                console.error('Mol* initialization failed', e);
+                startBtnText.textContent = '뷰어 로딩 실패';
+            }
+        }
+        initMolstar();
+
+        function updateStepStatus(step, status, outputText) {
+            const statusEl = document.getElementById(`step${step}-status`);
+            const outputEl = document.getElementById(`step${step}-output`);
+
+            if (!statusEl || !outputEl) {
+                console.error(`UI element for step ${step} not found.`);
+                return;
+            }
+
+            statusEl.classList.remove('step-pending', 'step-running', 'step-completed');
+            const icon = statusEl.querySelector('svg'); 
+            
+            if (icon) {
+                icon.classList.remove('blinking');
+            }
+            
+            if (status === 'running') {
+                statusEl.classList.add('step-running');
+                if (icon) icon.classList.add('blinking');
+            } else if (status === 'completed') {
+                statusEl.classList.add('step-completed');
+            } else {
+                statusEl.classList.add('step-pending');
+            }
+            outputEl.textContent = outputText;
+        }
+
+        async function simulateWorkflow() {
+            if (workflowRunning || !molstarViewer) return;
+            workflowRunning = true;
+            workflowCompleted = false;
+            mockResults.length = 0;
+            
+            // UI 초기화
+            workflowProgress.classList.remove('hidden');
+            resultsAnalysis.classList.add('hidden');
+            document.getElementById('results-table-body').innerHTML = '';
+            startBtn.disabled = true;
+            startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            
+            // 모든 단계 초기화
+            for (let i = 1; i <= 5; i++) {
+                updateStepStatus(i, 'pending', '');
+            }
+
+            // 3D 뷰어 초기화
+            if (molstarViewer) {
+                 await molstarViewer.plugin.clear();
+            }
+            molstarContainer.classList.add('hidden');
+            molstarPlaceholder.classList.remove('hidden');
+            molstarLoading.classList.add('hidden');
+            document.getElementById('molstar-error').classList.add('hidden');
+
+
+            // 1. 뼈대 구조 설계
+            setTimeout(() => {
+                updateStepStatus(1, 'running', 'RFDiffusion 모델 실행 중... 100개 뼈대 구조 생성 시작.');
+            }, 500);
+
+            setTimeout(() => {
+                updateStepStatus(1, 'completed', '완료: 100개의 후보 뼈대 구조 생성됨.');
+                updateStepStatus(2, 'running', 'ProteinMPNN 모델 실행 중... 1000개 아미노산 서열 설계 시작.');
+            }, 3000);
+
+            // 2. 서열 설계
+            setTimeout(() => {
+                updateStepStatus(2, 'completed', '완료: 1000개의 아미노산 서열 설계됨.');
+                updateStepStatus(3, 'running', 'AlphaFold2 모델 실행 중... 구조 예측 및 검증 시작.');
+            }, 6000);
+            
+            // 3. 구조 예측
+            setTimeout(() => {
+                updateStepStatus(3, 'completed', '완료: 1000개 서열에 대한 3D 구조 예측 완료.');
+                 updateStepStatus(4, 'running', '결과 분석 및 필터링 중...');
+            }, 10000);
+
+            // 4. 결과 분석
+            setTimeout(() => {
+                updateStepStatus(4, 'completed', '완료: 상위 5개 후보 바인더 필터링 완료.');
+                updateStepStatus(5, 'running', 'Evo2 모델 실행 중... 기능적 DNA 서열 생성 시작.');
+            }, 12000);
+
+            // 5. 신규 유전체 생성
+            setTimeout(() => {
+                updateStepStatus(5, 'completed', '완료: 최종 후보에 대한 기능적 DNA 서열 생성됨.');
+                displayResults();
+                workflowRunning = false;
+                workflowCompleted = true;
+                startBtn.disabled = false;
+                startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }, 14000);
+        }
+
+        function displayResults() {
+            resultsAnalysis.classList.remove('hidden');
+            const tableBody = document.getElementById('results-table-body');
+            const userPdbId = pdbIdInput.value.trim() || '7K4N'; // Fallback
+            
+            for(let i = 0; i < 5; i++) {
+                const plddt = (92.5 + Math.random() * 5).toFixed(2);
+                const bindingEnergy = (-120.0 - Math.random() * 20).toFixed(2);
+                const binderId = `BD-0${i+1}`;
+                
+                // 첫 번째 결과는 사용자 입력 PDB ID를 사용하고, 나머지는 데모용 ID를 사용
+                const pdbForDemo = i === 0 ? userPdbId : ['1CRN', '2M6Q', '6WLC', '5O9H'][i-1];
+
+                mockResults.push({
+                    rank: i + 1,
+                    id: binderId,
+                    plddt: plddt,
+                    energy: bindingEnergy,
+                    pdb: pdbForDemo
+                });
+
+                const row = `
+                    <tr class="bg-white border-b hover:bg-gray-50">
+                        <td class="px-6 py-4 font-medium text-gray-900">${i + 1}</td>
+                        <td class="px-6 py-4">${binderId}</td>
+                        <td class="px-6 py-4">${plddt}</td>
+                        <td class="px-6 py-4">${bindingEnergy}</td>
+                        <td class="px-6 py-4">
+                            <button class="view-structure-btn bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-1 rounded-full hover:bg-blue-200" data-pdb-id="${pdbForDemo}">구조 보기</button>
+                        </td>
+                    </tr>
+                `;
+                tableBody.insertAdjacentHTML('beforeend', row);
+            }
+             // 이벤트 리스너 추가
+            document.querySelectorAll('.view-structure-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const pdbId = e.target.getAttribute('data-pdb-id');
+                    viewStructure(pdbId);
+                });
+            });
+        }
+        
+        async function viewStructure(pdbId) {
+            if (!molstarViewer || !molstarViewer.plugin) {
+                console.error("Mol* viewer or plugin not initialized.");
+                return;
+            }
+
+            const plugin = molstarViewer.plugin;
+            const errorEl = document.getElementById('molstar-error');
+            
+            // UI 업데이트
+            errorEl.classList.add('hidden');
+            molstarPlaceholder.classList.add('hidden');
+            molstarLoading.classList.remove('hidden');
+            molstarContainer.classList.add('hidden');
+
+            try {
+                // 1. Clear previous viewer state
+                await plugin.clear();
+
+                // 2. Download and show the new structure
+                const data = await plugin.builders.data.download({ url: `https://files.rcsb.org/download/${pdbId}.cif` }, { state: { isGhost: true } });
+                const trajectory = await plugin.builders.structure.parseTrajectory(data, 'mmcif');
+                const model = await plugin.builders.structure.createModel(trajectory);
+                const structure = await plugin.builders.structure.createStructure(model, { name: 'model', params: {} });
+
+                // Add representation
+                await plugin.builders.structure.representation.addRepresentation(structure, {
+                    type: 'cartoon'
+                });
+                
+                // 3. Reset camera
+                plugin.managers.camera.reset();
+                
+                molstarLoading.classList.add('hidden');
+                molstarContainer.classList.remove('hidden');
+
+            } catch(e) {
+                console.error("Failed to load structure", e);
+                molstarLoading.classList.add('hidden');
+                molstarPlaceholder.classList.remove('hidden');
+                errorEl.textContent = `${pdbId} 구조를 불러오는 데 실패했습니다. PDB ID를 확인해주세요.`;
+                errorEl.classList.remove('hidden');
+            }
+        }
+
+        function addChatMessage(message, sender = 'user') {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('p-2', 'rounded-lg');
+            if(sender === 'user') {
+                messageDiv.classList.add('bg-gray-200', 'text-gray-800', 'self-end');
+                messageDiv.innerHTML = `<strong>You:</strong> ${message}`;
+            } else {
+                messageDiv.classList.add('bg-blue-100', 'text-blue-800', 'self-start');
+                messageDiv.innerHTML = `<strong>Co-pilot:</strong> ${message}`;
+            }
+            mcpChatWindow.appendChild(messageDiv);
+            mcpChatWindow.scrollTop = mcpChatWindow.scrollHeight;
+        }
+
+        function handleMcpCommand(command) {
+            addChatMessage(command, 'user');
+            mcpInput.value = '';
+
+            setTimeout(() => {
+                let response = "이해할 수 없는 명령입니다. '상위 5개 결과 보여줘'와 같이 시도해보세요.";
+
+                if (!workflowCompleted) {
+                     response = "워크플로우가 완료된 후에 결과를 조회할 수 있습니다.";
+                } else if (command.includes('상위') && command.includes('결과')) {
+                    response = "상위 5개 결과는 다음과 같습니다:<br><ul class='list-disc pl-5 mt-2'>";
+                    mockResults.forEach(r => {
+                        response += `<li>${r.id} (PDB: ${r.pdb}): pLDDT ${r.plddt}, 에너지 ${r.energy}</li>`;
+                    });
+                    response += "</ul>";
+                } else if (command.toLowerCase().includes('정보 요약') || command.toLowerCase().includes('알려줘')) {
+                    const match = command.match(/BD-\d+/i);
+                    if (match) {
+                        const binderId = match[0].toUpperCase();
+                        const result = mockResults.find(r => r.id === binderId);
+                        if (result) {
+                            response = `${result.id}의 정보:<ul><li><strong>PDB ID:</strong> ${result.pdb}</li><li><strong>순위:</strong> ${result.rank}</li><li><strong>pLDDT 점수:</strong> ${result.plddt} (매우 높음)</li><li><strong>예측 결합 에너지:</strong> ${result.energy} REU</li></ul>구조를 보시려면 '구조 보기' 버튼을 클릭하세요.`;
+                        } else {
+                            response = `${binderId}를 찾을 수 없습니다.`;
+                        }
+                    }
+                }
+                
+                addChatMessage(response, 'copilot');
+            }, 1000);
+        }
+
+        startBtn.addEventListener('click', simulateWorkflow);
+        mcpSendBtn.addEventListener('click', () => handleMcpCommand(mcpInput.value));
+        mcpInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                handleMcpCommand(mcpInput.value);
+            }
+        });
+
+    </script>
+</body>
+</html>
+
